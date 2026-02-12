@@ -12,7 +12,6 @@ A modern multi-job management system for ESX-based FiveM servers. Built with mil
 - **Frontend**: React with Tailwind CSS
 - **Icons**: Iconify
 - **Framework**: ESX Legacy
-- **Target System**: ox_target
 - **UI Library**: ox_lib
 
 ## ✨ Features

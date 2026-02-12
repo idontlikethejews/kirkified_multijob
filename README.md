@@ -4,6 +4,8 @@
 
 A modern multi-job management system for ESX-based FiveM servers. Built with military-grade security and peak performance optimization.
 
+![multijob](https://i.ibb.co/93YrQ4rD/image.png)
+
 ## 🛠️ Technology Stack (teknologia)
 
 - **Backend**: Lua (server-side & client-side)

@@ -196,6 +196,22 @@ local function LoadPlayerJobs(identifier)
         end
     end
 
+    if not next(jobs) then
+        local xPlayer = ESX.GetPlayerFromIdentifier(identifier)
+        if xPlayer then
+            local currentJob = xPlayer.job.name
+            local currentGrade = xPlayer.job.grade
+            if currentJob == Config.DefaultJob.name then
+                jobs[1] = { job = Config.DefaultJob.name, grade = Config.DefaultJob.grade }
+            else
+                jobs[1] = { job = currentJob, grade = currentGrade }
+                activeSlot = 1
+            end
+        else
+            jobs[1] = { job = Config.DefaultJob.name, grade = Config.DefaultJob.grade }
+        end
+    end
+
     if not jobs[1] then
         jobs[1] = {
             job = Config.DefaultJob.name,
@@ -206,15 +222,15 @@ local function LoadPlayerJobs(identifier)
 
     if Config.Debug then
         print(string.format('^2[Multijob]^0 Loaded jobs for %s: active slot = %d',
-         identifier, 
-         activeSlot
+            identifier, 
+            activeSlot
         ))
         for slot, data in pairs(jobs) do
             print(string.format('  Slot %d: %s (grade %d)', 
                 slot, 
                 data.job, 
                 data.grade
-        ))
+            ))
         end
     end
 
@@ -234,9 +250,7 @@ local function SavePlayerJobs(identifier, jobdata)
 
     if timeout[identifier] then
         if Config.Debug then
-            print(('^1[Multijob]^0 Save timeout for %s, forcing save'):format(
-                identifier
-            ))
+            print(('^1[Multijob]^0 Save timeout for %s, forcing save'):format(identifier))
         end
     end
 
@@ -475,7 +489,9 @@ AddEventHandler('esx:playerLoaded', function(playerId, xPlayer)
     local activeJob = jobdata.slots[jobdata.activeSlot]
 
     if activeJob then
-        xPlayer.setJob(activeJob.job, activeJob.grade)
+        if xPlayer.job.name ~= activeJob.job or xPlayer.job.grade ~= activeJob.grade then
+            xPlayer.setJob(activeJob.job, activeJob.grade)
+        end
         local basicjob = GetOnDutyJobName(activeJob.job)
         local isOnDuty = activeJob.job == basicjob
         UpdateDutyStateBag(playerId, isOnDuty)
@@ -569,18 +585,34 @@ lib.callback.register('multijob:getData', function(source)
             local data = jobdata.slots[slot]
             local basicjobname = GetOnDutyJobName(data.job)
             local jobinfo = availablejobs[data.job] or availablejobs[basicjobname]
-            local gradeinfo = jobinfo and jobinfo.grades[tostring(data.grade)]
+
+            local grade_label = MySQL.scalar.await([[
+                SELECT label 
+                FROM job_grades 
+                WHERE job_name = ? AND grade = ?
+            ]], {basicjobname, data.grade}) 
+
+            if not grade_label then
+                local gradeinfo = jobinfo and jobinfo.grades and jobinfo.grades[tostring(data.grade)]
+                grade_label = gradeinfo and (gradeinfo.label or gradeinfo.name or gradeinfo.grade_label) or ('Grade ' .. tostring(data.grade))
+            end
+
+            local grade_salary = MySQL.scalar.await([[
+                SELECT salary 
+                FROM job_grades 
+                WHERE job_name = ? AND grade = ?
+            ]], {basicjobname, data.grade}) or 0
 
             formattedSlots[#formattedSlots + 1] = {
-                slot = slot,
-                job = data.job,
-                grade = data.grade,
-                label = jobinfo and jobinfo.label or data.job,
-                gradelabel = gradeinfo and gradeinfo.name or 'Grade ' .. data.grade,
-                salary = gradeinfo and gradeinfo.salary or 0,
-                isactive = slot == jobdata.activeSlot,
-                isDutyJob = IsJobDutyEnabled(basicjobname),
-                isOnDuty = data.job == basicjobname
+                slot       = slot,
+                job        = data.job,
+                grade      = data.grade,
+                label      = jobinfo and jobinfo.label or data.job,
+                gradeLabel = grade_label,
+                salary     = grade_salary,
+                isactive   = slot == jobdata.activeSlot,
+                isDutyJob  = IsJobDutyEnabled(basicjobname),
+                isOnDuty   = data.job == basicjobname
             }
         end
     end
@@ -589,14 +621,14 @@ lib.callback.register('multijob:getData', function(source)
         print(string.format('^2[Multijob]^0 Sending %d slots to client (active: %d)', 
             #formattedSlots, 
             jobdata.activeSlot
-    ))
+        ))
     end
 
     return {
-        slots = formattedSlots,
-        activeSlot = jobdata.activeSlot,
-        maxSlots = Config.MaxJobs,
-        locale = Config.Locale,
+        slots       = formattedSlots,
+        activeSlot  = jobdata.activeSlot,
+        maxSlots    = Config.MaxJobs,
+        locale      = Config.Locale,
         dutyEnabled = Config.DutySystem.enabled
     }
 end)
@@ -776,9 +808,7 @@ if Config.AutoSaveInterval > 0 then
                 end
             end
             if Config.Debug and saveCount > 0 then
-                print(('^2[Multijob]^0 Auto-saved data for %d players'):format(
-                    saveCount
-                ))
+                print(('^2[Multijob]^0 Auto-saved data for %d players'):format(saveCount))
             end
         end
     end)
